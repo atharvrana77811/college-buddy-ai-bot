@@ -17,7 +17,8 @@ logging.basicConfig(
 )
 
 # ⚠️ PUT YOUR BOT TOKEN HERE (KEEP IT SECRET)
-TOKEN = "8481127899:AAElHemq-3-s9X6ElVQR9gT2L_6l7bB9Ysg"
+TOKEN = "8481127899:AAE...something"
+
 
 # ---------- RSS feeds for different categories ----------
 CATEGORY_FEEDS = {
