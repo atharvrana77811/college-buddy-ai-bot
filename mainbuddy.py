@@ -17,7 +17,9 @@ logging.basicConfig(
 )
 
 # ⚠️ PUT YOUR BOT TOKEN HERE (KEEP IT SECRET)
-TOKEN = "8481127899:AAE...something"
+import os
+TOKEN = os.getenv("BOT_TOKEN")
+
 
 
 # ---------- RSS feeds for different categories ----------
