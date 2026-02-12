@@ -1,56 +1,47 @@
-College Buddy AI Bot 🤖🎓
+# College Buddy AI 🤖
 
-A Telegram bot for engineering students that delivers daily AI, robotics, startup, and coding news.
-It also gives project ideas, skill suggestions, and branch-based career guidance — all inside Telegram.
+College Buddy AI is a Telegram bot designed for engineering students who want curated AI news, project ideas, and skill guidance — directly inside Telegram.
 
-⭐ Features
+It eliminates random browsing and delivers structured updates daily.
 
-📰 Daily AI & tech news
+---
 
-🎯 Branch-based career guidance (CSE, AIML, Robotics, ECE)
+## 🚀 Features
 
-💡 Project ideas for students
+- 📰 Latest AI & Tech News (Google News RSS integration)
+- 🤖 Branch-based career guidance (CSE, AIML, Robotics, ECE)
+- 🎯 Project ideas for students
+- 🧠 Skill-of-the-day suggestions
+- 📊 Clean inline button UI (Telegram InlineKeyboard)
+- ⏰ Automated daily digest (APScheduler)
 
-🧠 Skill for today
+---
 
-🔍 Latest headlines using Google News RSS feeds
+## 🛠 Tech Stack
 
-🔘 Clean menu with buttons (AI, Robotics, Coding, Startup, Daily Digest)
+- Python 3.10
+- python-telegram-bot
+- feedparser (RSS parsing)
+- APScheduler
+- Railway (Deployment)
+- GitHub (CI/CD)
 
-🧾 Commands
-Command	Description
-/start	Opens main menu
-/setup	Choose your branch
-/ai	AI news + career angle
-/robotics	Robotics news
-/startup	Startup business news
-/coding	Coding/programming news
-/realnews	Live AI headlines
-/project	Project idea
-/skill	Skill for today
-/daily	Daily digest toggle
-🛠 How to Run
+---
 
-Install requirements
+## ⚙️ Architecture
 
-Add your Telegram bot token in the code
+1. User interacts via Telegram UI.
+2. Bot fetches real-time RSS feeds.
+3. Content filtered by category.
+4. Scheduled job pushes daily digest.
+5. Deployed as a live cloud service.
 
-Run:
+---
 
-python mainbuddy.py
+## 📦 Installation (Local Setup)
 
-👨‍💻 About
+```bash
+git clone https://github.com/yourusername/college-buddy-ai-bot.git
+cd college-buddy-ai-bot
+pip install -r requirements.txt
 
-I’m Atharv Rana, a B.Tech student who stopped waiting to “become good at coding someday” and started building useful AI tools right now.
-
-I explore Python, automation, AI workflows, and student-focused products — and turn them into real projects instead of college assignments that nobody uses.
-
-College Buddy AI is my first open-source bot.
-Not perfect. Not advanced.
-But it works — and it solves an actual student problem.
-
-This repo marks the start of my dev journey.
-More projects coming.
-
-
-Built by a B.Tech student for engineering students who want guidance, project ideas, and the latest tech updates without wasting time searching the internet.
