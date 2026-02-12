@@ -18,7 +18,7 @@ logging.basicConfig(
 
 # ⚠️ PUT YOUR BOT TOKEN HERE (KEEP IT SECRET)
 import os
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv()
 
 
 
