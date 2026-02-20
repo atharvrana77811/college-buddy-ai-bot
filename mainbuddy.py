@@ -9,7 +9,34 @@ from telegram.ext import (
 import feedparser
 import logging
 import random
+import json
+from datetime import datetime
 
+USERS_FILE = "users_data.json"
+
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_users(data):
+    with open(USERS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+def track_user(user_id, username=None):
+    data = load_users()
+    uid = str(user_id)
+    if uid not in data:
+        data[uid] = {
+            "username": username,
+            "first_seen": datetime.now().isoformat(),
+            "message_count": 0
+        }
+    data[uid]["message_count"] += 1
+    data[uid]["last_seen"] = datetime.now().isoformat()
+    save_users(data)
+    return len(data)  # returns total unique users
 # ---------- logging so you can see what's happening ----------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
