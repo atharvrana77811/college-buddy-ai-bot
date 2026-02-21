@@ -10,46 +10,47 @@ import feedparser
 import logging
 import random
 import json
+import os
+import gspread
+from google.oauth2.service_account import Credentials
 from datetime import datetime
 
-USERS_FILE = "users_data.json"
-
-def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_users(data):
-    with open(USERS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-def track_user(user_id, username=None):
-    data = load_users()
-    uid = str(user_id)
-    if uid not in data:
-        data[uid] = {
-            "username": username,
-            "first_seen": datetime.now().isoformat(),
-            "message_count": 0
-        }
-    data[uid]["message_count"] += 1
-    data[uid]["last_seen"] = datetime.now().isoformat()
-    save_users(data)
-    return len(data)  # returns total unique users
-# ---------- logging so you can see what's happening ----------
+# ---------- logging ----------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 
-# ⚠️ PUT YOUR BOT TOKEN HERE (KEEP IT SECRET)
-import os
+# ---------- env vars ----------
 TOKEN = os.getenv("BOT_TOKEN")
+SHEET_ID = os.getenv("SHEET_ID")
+GOOGLE_CREDS_JSON = os.getenv("GOOGLE_CREDS_JSON")
 
+# ---------- Google Sheets tracking ----------
+def get_sheet():
+    creds_dict = json.loads(GOOGLE_CREDS_JSON)
+    creds = Credentials.from_service_account_info(
+        creds_dict,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    client = gspread.authorize(creds)
+    return client.open_by_key(SHEET_ID).sheet1
 
+def track_user(user_id, username):
+    try:
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        for i, row in enumerate(records, start=2):
+            if str(row["user_id"]) == str(user_id):
+                sheet.update_cell(i, 4, now)
+                sheet.update_cell(i, 5, int(row["message_count"]) + 1)
+                return
+        sheet.append_row([str(user_id), username or "unknown", now, now, 1])
+    except Exception as e:
+        logging.error(f"Sheet tracking error: {e}")
 
-# ---------- RSS feeds for different categories ----------
+# ---------- RSS feeds ----------
 CATEGORY_FEEDS = {
     "ai": "https://news.google.com/rss/search?q=artificial+intelligence&hl=en-IN&gl=IN&ceid=IN:en",
     "robotics": "https://news.google.com/rss/search?q=robotics&hl=en-IN&gl=IN&ceid=IN:en",
@@ -58,17 +59,19 @@ CATEGORY_FEEDS = {
 }
 
 # ---------- memory ----------
-user_prefs = {}                              # stores user branch
-seen_links = {k: set() for k in CATEGORY_FEEDS}  # per-category seen links
-
-# chat_id -> job (for /daily)
+user_prefs = {}
+seen_links = {k: set() for k in CATEGORY_FEEDS}
 daily_jobs = {}
 
+# ---------- YOUR ADMIN TELEGRAM ID ----------
+ADMIN_ID = 7697683067  # <-- REPLACE THIS WITH YOUR TELEGRAM ID
 
 # ---------- COMMAND HANDLERS ----------
 
 def start(update, context):
-    """Show welcome text + inline menu."""
+    user = update.effective_user
+    track_user(user.id, user.username)
+
     keyboard = [
         [InlineKeyboardButton("⚙️ Setup Branch", callback_data="setup")],
         [
@@ -86,9 +89,7 @@ def start(update, context):
         ],
         [InlineKeyboardButton("ℹ️ About Bot", callback_data="about")],
     ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     update.effective_message.reply_text(
         "👋 Welcome to *College Buddy AI* — your tech + career assistant.\n\n"
         "I give:\n"
@@ -102,10 +103,23 @@ def start(update, context):
     )
 
 
-def setup(update, context):
-    """Ask user for their branch."""
-    user_id = update.effective_user.id
+def stats(update, context):
+    if update.effective_user.id != ADMIN_ID:
+        return update.effective_message.reply_text("Not authorized.")
+    try:
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+        total = len(records)
+        update.effective_message.reply_text(
+            f"📊 *Bot Stats*\n\nTotal unique users: {total}",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        update.effective_message.reply_text(f"Error: {e}")
 
+
+def setup(update, context):
+    user_id = update.effective_user.id
     update.effective_message.reply_text(
         "Choose your branch:\n"
         "1. CSE\n"
@@ -114,40 +128,24 @@ def setup(update, context):
         "4. ECE\n\n"
         "Send just the number (1–4)."
     )
-
     user_prefs[user_id] = {"stage": "awaiting_branch"}
 
 
 def echo(update, context):
-    """Handle replies to setup + normal messages."""
     user_id = update.effective_user.id
     text = update.effective_message.text.strip()
 
-    # ---------- STEP 1: user choosing branch ----------
     if user_id in user_prefs and user_prefs[user_id].get("stage") == "awaiting_branch":
-        branches = {
-            "1": "CSE",
-            "2": "AIML",
-            "3": "Robotics",
-            "4": "ECE",
-        }
-
+        branches = {"1": "CSE", "2": "AIML", "3": "Robotics", "4": "ECE"}
         if text not in branches:
-            return update.effective_message.reply_text(
-                "Invalid input. Send a number 1–4."
-            )
-
+            return update.effective_message.reply_text("Invalid input. Send a number 1–4.")
         user_prefs[user_id] = {"branch": branches[text]}
-        return update.effective_message.reply_text(
-            f"Nice! I saved your branch as: {branches[text]} ✅"
-        )
+        return update.effective_message.reply_text(f"Nice! I saved your branch as: {branches[text]} ✅")
 
-    # ---------- default behaviour ----------
     update.effective_message.reply_text(f"You said: {text}")
 
 
 def news(update, context):
-    """Static sample news."""
     text = (
         "📰 *Tech News for Students*\n\n"
         "1️⃣ AI model beats 98% of humans in reasoning.\n"
@@ -161,37 +159,24 @@ def news(update, context):
     update.effective_message.reply_text(text, parse_mode="Markdown")
 
 
-# ---------- HELPERS ----------
-
 def fetch_rss_entries(category: str, limit: int = 3):
-    """
-    Get up to `limit` unseen entries for the given category.
-    Falls back to latest if nothing new.
-    """
     url = CATEGORY_FEEDS[category]
     feed = feedparser.parse(url)
-
     new_entries = []
-
     for entry in feed.entries:
         link = entry.link
         if link in seen_links[category]:
             continue
-
         new_entries.append(entry)
         seen_links[category].add(link)
-
         if len(new_entries) == limit:
             break
-
     if not new_entries:
         new_entries = feed.entries[:limit]
-
     return new_entries
 
 
 def category_career_text(category: str, branch: str) -> str:
-    """Return a career note based on category + branch."""
     base_texts = {
         "ai": "Follow these to spot where AI jobs & research are heading.",
         "robotics": "Good for understanding how AI meets hardware and control systems.",
@@ -199,7 +184,6 @@ def category_career_text(category: str, branch: str) -> str:
         "coding": "Shows what tools, languages and frameworks are hot for devs.",
     }
     base = base_texts[category]
-
     if branch == "AIML" and category == "ai":
         extra = " Double down on ML, math, and building small model-based projects."
     elif branch == "Robotics" and category == "robotics":
@@ -210,92 +194,60 @@ def category_career_text(category: str, branch: str) -> str:
         extra = " Focus on embedded systems + edge AI, strong niche combo."
     else:
         extra = ""
-
     return base + extra
 
 
 def build_category_message(category: str, title: str, user_id: int) -> str:
-    """Build the text for category news, re-used by commands and /daily."""
     branch = user_prefs.get(user_id, {}).get("branch", "General")
     entries = fetch_rss_entries(category, limit=3)
-
     if not entries:
         return "Couldn't fetch news right now 🫠"
-
     msg = f"📰 *Latest {title} News*\n\n"
-
     for i, entry in enumerate(entries, start=1):
         msg += f"{i}. [{entry.title}]({entry.link})\n"
-
     msg += f"\n🎯 *Career angle for {branch} students:*\n"
     msg += category_career_text(category, branch)
     return msg
 
 
 def send_category_news(update, context, category: str, title: str):
-    """Generic function for AI/Robotics/Startup/Coding commands & buttons."""
     user_id = update.effective_user.id
     msg = build_category_message(category, title, user_id)
-    update.effective_message.reply_text(
-        msg, parse_mode="Markdown", disable_web_page_preview=True
-    )
+    update.effective_message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
 
-
-# ---------- CATEGORY COMMANDS ----------
 
 def ai_news(update, context):
     send_category_news(update, context, category="ai", title="AI")
 
-
 def robotics_news(update, context):
     send_category_news(update, context, category="robotics", title="Robotics")
-
 
 def startup_news(update, context):
     send_category_news(update, context, category="startup", title="Startup / Tech Business")
 
-
 def coding_news(update, context):
     send_category_news(update, context, category="coding", title="Coding / Dev")
 
-
 def realnews(update, context):
-    """Alias to AI news for backward compatibility."""
     ai_news(update, context)
 
 
-# ---------- DAILY DIGEST ----------
-
 def daily(update, context):
-    """Start (or restart) daily AI digest for this chat."""
     chat_id = update.effective_message.chat_id
-
-    # cancel previous job if exists
     if chat_id in daily_jobs:
         daily_jobs[chat_id].schedule_removal()
-
     job = context.job_queue.run_repeating(
-        daily_job,
-        interval=24 * 60 * 60,  # every 24 hours
-        first=0,                # send one immediately
-        context=chat_id,
-        name=str(chat_id),
+        daily_job, interval=24 * 60 * 60, first=0, context=chat_id, name=str(chat_id),
     )
     daily_jobs[chat_id] = job
-
     update.effective_message.reply_text(
         "✅ Daily AI digest activated.\n"
         "You'll get fresh AI news + career angle once a day around this time."
     )
 
-
 def daily_job(context):
-    """JobQueue callback: send daily AI news to a chat."""
     chat_id = context.job.context
-    # in private chats, chat_id == user_id
-    user_id = chat_id
-
-    msg = build_category_message("ai", "AI", user_id)
+    msg = build_category_message("ai", "AI", chat_id)
     context.bot.send_message(
         chat_id=chat_id,
         text="⏰ *Your Daily AI Digest*\n\n" + msg,
@@ -303,8 +255,6 @@ def daily_job(context):
         disable_web_page_preview=True,
     )
 
-
-# ---------- PROJECT IDEAS ----------
 
 PROJECT_IDEAS = {
     "CSE": [
@@ -334,22 +284,15 @@ PROJECT_IDEAS = {
     ],
 }
 
-
 def project_ideas(update, context):
-    """Give 1 project idea based on branch."""
     user_id = update.effective_user.id
     branch = user_prefs.get(user_id, {}).get("branch", "General")
-
     ideas = PROJECT_IDEAS.get(branch, PROJECT_IDEAS["General"])
-    idea = random.choice(ideas)
-
     update.effective_message.reply_text(
-        f"🎯 *Project idea for {branch} students:*\n\n{idea}",
+        f"🎯 *Project idea for {branch} students:*\n\n{random.choice(ideas)}",
         parse_mode="Markdown",
     )
 
-
-# ---------- SKILL OF THE DAY ----------
 
 SKILLS = {
     "CSE": [
@@ -368,7 +311,7 @@ SKILLS = {
         "Study different types of sensors: ultrasonic, IR, LiDAR.",
     ],
     "ECE": [
-        "Revise Ohm’s law + basic circuit analysis.",
+        "Revise Ohm's law + basic circuit analysis.",
         "Learn how ADC (Analog to Digital Converter) works.",
         "Study the basics of microcontrollers vs microprocessors.",
     ],
@@ -379,29 +322,21 @@ SKILLS = {
     ],
 }
 
-
 def skill_of_the_day(update, context):
-    """Suggest 1 skill to work on today."""
     user_id = update.effective_user.id
     branch = user_prefs.get(user_id, {}).get("branch", "General")
-
     skills = SKILLS.get(branch, SKILLS["General"])
-    skill = random.choice(skills)
-
     update.effective_message.reply_text(
-        f"🧠 *Skill for today ({branch}):*\n\n{skill}",
+        f"🧠 *Skill for today ({branch}):*\n\n{random.choice(skills)}",
         parse_mode="Markdown",
     )
 
 
-# ---------- INLINE BUTTON HANDLER ----------
-
 def button_handler(update, context):
     query = update.callback_query
     data = query.data
-    query.answer()  # stop the 'loading...'
+    query.answer()
 
-    # Use same update/context functions as commands
     if data == "setup":
         setup(update, context)
     elif data == "ai":
@@ -432,8 +367,6 @@ def button_handler(update, context):
         )
 
 
-# ---------- MAIN ----------
-
 def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
@@ -441,23 +374,16 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("setup", setup))
     dp.add_handler(CommandHandler("news", news))
-
-    # category commands
+    dp.add_handler(CommandHandler("stats", stats))
     dp.add_handler(CommandHandler("ai", ai_news))
     dp.add_handler(CommandHandler("robotics", robotics_news))
     dp.add_handler(CommandHandler("startup", startup_news))
     dp.add_handler(CommandHandler("coding", coding_news))
     dp.add_handler(CommandHandler("realnews", realnews))
-
-    # new feature commands
     dp.add_handler(CommandHandler("daily", daily))
     dp.add_handler(CommandHandler("project", project_ideas))
     dp.add_handler(CommandHandler("skill", skill_of_the_day))
-
-    # inline button callbacks
     dp.add_handler(CallbackQueryHandler(button_handler))
-
-    # fallback
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
 
     logging.info("Bot started…")
