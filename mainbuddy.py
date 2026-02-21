@@ -132,18 +132,17 @@ def setup(update, context):
 
 
 def echo(update, context):
+    user = update.effective_user
+    track_user(user.id, user.username)
     user_id = update.effective_user.id
     text = update.effective_message.text.strip()
-
     if user_id in user_prefs and user_prefs[user_id].get("stage") == "awaiting_branch":
         branches = {"1": "CSE", "2": "AIML", "3": "Robotics", "4": "ECE"}
         if text not in branches:
             return update.effective_message.reply_text("Invalid input. Send a number 1–4.")
         user_prefs[user_id] = {"branch": branches[text]}
         return update.effective_message.reply_text(f"Nice! I saved your branch as: {branches[text]} ✅")
-
     update.effective_message.reply_text(f"You said: {text}")
-
 
 def news(update, context):
     text = (
